@@ -1,0 +1,42 @@
+{
+  "name": "pi-digivolve",
+  "version": "1.0.0",
+  "description": "Pi extension that runs one final digivolution reflection pass to improve durable repo instructions and skills when useful.",
+  "keywords": [
+    "agents",
+    "digivolution",
+    "pi",
+    "pi-package",
+    "skills"
+  ],
+  "license": "MIT",
+  "author": "Mike Wallio",
+  "type": "module",
+  "main": "extensions/digivolve.ts",
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "lint": "oxlint extensions/digivolve.ts extensions/digivolve/config.ts",
+    "format": "oxfmt --write extensions package.json tsconfig.json .oxlintrc.json .oxfmtrc.json",
+    "check": "npm run typecheck && npm run lint"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.6",
+    "@types/node": "^25.9.3",
+    "@typescript/native-preview": "^7.0.0-dev.20260616.1",
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0",
+    "oxlint-tsgolint": "^0.23.0",
+    "vitest": "^4.1.9"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/digivolve.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}
