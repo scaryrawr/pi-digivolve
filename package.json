@@ -20,7 +20,7 @@
     "check": "npm run typecheck && npm run lint"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.79.6",
+    "@earendil-works/pi-coding-agent": "^0.79.8",
     "@types/node": "^25.9.3",
     "@typescript/native-preview": "^7.0.0-dev.20260616.1",
     "oxfmt": "^0.55.0",
