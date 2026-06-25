@@ -28,7 +28,9 @@ Update instructions or skills only when at least one is true:
 
 - Do not add generic advice, one-off task details, secrets, private data, or speculative preferences.
 - Do not create nested instructions unless the scope differs meaningfully from parent guidance.
-- Do not update instructions or skills just to satisfy a hook. If there is no durable improvement, make no change.
+- Prefer correcting or tightening existing guidance over duplicating new text.
+- Keep edits concise and actionable.
+- If there is no durable improvement, make no file changes and do not respond.
 
 ## Checklist
 

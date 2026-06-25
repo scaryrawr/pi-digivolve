@@ -2,7 +2,7 @@
 
 `pi-digivolve` is a pi package that ports the Digivolution idea from the Copilot CLI plugin to pi.
 
-It helps agents leave a repository easier for the next agent to work in. Near the point where the agent would otherwise stop, it queues one final reflection pass asking the agent to decide whether durable repo instructions or in-repo skills should be improved. The agent may decide no change is warranted.
+It helps agents leave a repository easier for the next agent to work in. Once per user prompt, near the point where the agent would otherwise stop, it queues one reflection pass asking the agent to decide whether durable repo instructions or in-repo skills should be improved. The agent may decide no change is warranted.
 
 ## What it updates
 
@@ -17,18 +17,19 @@ The extension is advisory: it does **not** directly auto-edit files. It asks the
 
 Pi does not currently expose a cancellable `quit`/`agentStop` hook equivalent. Instead, `pi-digivolve` uses the closest safe lifecycle points:
 
-- `turn_end`: when a turn ends with no tool results and no pending messages, it queues one follow-up reflection pass.
-- `session_before_switch` and `session_before_fork`: if a session replacement is requested before reflection has run, it cancels once and queues reflection first.
-- A session/repository guard is stored with `pi.appendEntry()` so the reflection pass runs at most once per session/repo.
+- `input`: each genuine user prompt (`source` `"interactive"` or `"rpc"`) arms one reflection pass. The injected reflection prompt arrives as `source: "extension"`, so it never re-arms reflection and cannot trigger a loop.
+- `agent_end`: when the agent finishes a prompt with no pending messages, it queues the armed reflection pass.
+
+Reflection runs at most once per user message; arming resets on each new prompt.
 
 Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
 
 ## Commands
 
 ```text
-/digivolve          Run reflection now and mark this session/repo as handled.
-/digivolve force    Run reflection now even if it already ran.
-/digivolve status   Show whether the current session/repo is armed or done, plus the config path.
+/digivolve          Run reflection now and mark this message as handled.
+/digivolve force    Run reflection now even if it already ran for this message.
+/digivolve status   Show whether the current message is armed or done, plus the config path.
 /digivolve on       Enable automatic reflection and persist the setting.
 /digivolve off      Disable automatic reflection and persist the setting.
 ```

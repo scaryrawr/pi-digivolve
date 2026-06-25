@@ -4,6 +4,10 @@
 
 This is a pi package loaded directly by pi; do not add or commit generated build output. `package.json` declares the package entry in `main`, the pi extension in `pi.extensions`, and bundled skills in `pi.skills`. `extensions/digivolve.ts` registers lifecycle hooks and the `/digivolve` command. `extensions/digivolve/config.ts` owns user-level config persistence. `skills/digivolution/SKILL.md` is the packaged reflection skill and should stay aligned with extension behavior.
 
+## Reflection Loop Invariant
+
+The reflection follow-up is delivered with `pi.sendUserMessage()`, which arrives as a `user`-role message. Never gate reflection arming on `message_start`/message role: the injected prompt would re-arm and loop. Distinguish genuine prompts from the injected follow-up via the `input` event `source` (`"interactive"`/`"rpc"` arm; `"extension"` does not) and the `<!-- pi-digivolve -->` sentinel in the text. Reflection is armed once per genuine user message and consumed at most once per message.
+
 ## Build, Test, and Development Commands
 
 - `npm run format` — format package files with oxfmt and sort imports.
