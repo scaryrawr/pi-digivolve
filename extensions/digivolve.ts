@@ -10,8 +10,6 @@ import { DigivolveConfigManager } from "./digivolve/config.ts";
 const SENTINEL = "<!-- pi-digivolve -->";
 
 const FOLLOW_UP_PROMPT = `${SENTINEL}
-Before finishing, run a pi-digivolve reflection over this session.
-
 Read the digivolution skill if you have not already.
 
 Review what was learned during the task. If durable, repo-specific instructions or in-repo skills should be improved, edit the narrowest appropriate file now. If no durable improvement is warranted, make no changes and do not respond.`;
