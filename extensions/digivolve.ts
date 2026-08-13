@@ -139,8 +139,12 @@ export default function digivolve(pi: ExtensionAPI) {
   // Only one side session may run per extension instance. The side session
   // filters out pi-digivolve itself, so this is a concurrency guard rather than
   // the primary recursion boundary.
-  let inDigivolveSession = false;
-  let activeSideSession: AgentSession | null = null;
+  interface ReflectionRun {
+    cancelled: boolean;
+    session: AgentSession | null;
+    completion: Promise<void> | null;
+  }
+  let activeReflection: ReflectionRun | null = null;
 
   /**
    * Queue the one allowed reflection pass for the current user message when
@@ -148,19 +152,45 @@ export default function digivolve(pi: ExtensionAPI) {
    * queued so session-replacement hooks can cancel and let it run first.
    *
    * Recursion is prevented structurally because the side session filters out
-   * pi-digivolve and queues its result as a non-triggering custom message.
-   * Source/sentinel checks and the single-flight flag provide defense in depth.
+   * pi-digivolve and reports its result only through the UI. Source/sentinel
+   * checks and the single-flight guard provide defense in depth.
    */
   function maybeQueueReflection(ctx: ExtensionContext, force = false): boolean {
     if (!force && !reflectionArmed) return false;
-    if (inDigivolveSession) return false;
+    if (activeReflection) return false;
     if (!ctx.isProjectTrusted()) return false;
     if (!hasConversation(ctx)) return false;
 
     reflectionArmed = false;
-    void runDigivolveReflection(ctx);
+    const run: ReflectionRun = {
+      cancelled: false,
+      session: null,
+      completion: null,
+    };
+    activeReflection = run;
+    run.completion = runDigivolveReflection(ctx, run);
+    void run.completion;
     if (ctx.hasUI) ctx.ui.notify("pi-digivolve queued a reflection pass", "info");
     return true;
+  }
+
+  /**
+   * Cancel the entire active run, including setup that has not created a
+   * session yet, and wait for its owning task to release the guard.
+   */
+  async function cancelActiveReflection(): Promise<void> {
+    const run = activeReflection;
+    if (!run) return;
+
+    run.cancelled = true;
+    if (run.session) {
+      try {
+        await run.session.abort();
+      } catch {
+        // The owning task still performs final cleanup and releases the guard.
+      }
+    }
+    await run.completion;
   }
 
   /**
@@ -168,8 +198,7 @@ export default function digivolve(pi: ExtensionAPI) {
    * of the main branch. The side session can edit repository guidance and use
    * other extensions, but cannot load pi-digivolve or trigger another main turn.
    */
-  async function runDigivolveReflection(ctx: ExtensionContext): Promise<void> {
-    inDigivolveSession = true;
+  async function runDigivolveReflection(ctx: ExtensionContext, run: ReflectionRun): Promise<void> {
     let session: AgentSession | null = null;
 
     // Snapshot all session-bound data before the first await. The main session
@@ -190,6 +219,8 @@ export default function digivolve(pi: ExtensionAPI) {
 
     try {
       const { resourceLoader, settingsManager } = await createDigivolveResources(cwd, systemPrompt);
+      if (run.cancelled) return;
+
       const created = await createAgentSession({
         cwd,
         sessionManager: SessionManager.inMemory(cwd),
@@ -200,13 +231,19 @@ export default function digivolve(pi: ExtensionAPI) {
         settingsManager,
       });
       session = created.session;
-      activeSideSession = session;
+      run.session = session;
+      if (run.cancelled) return;
+
       session.agent.state.messages = contextMessages as typeof session.agent.state.messages;
 
       await session.prompt(FOLLOW_UP_PROMPT, { source: "extension" });
 
       const response = getLastAssistantMessage(session);
-      if (response?.stopReason !== "aborted" && response?.stopReason !== "error") {
+      if (
+        !run.cancelled &&
+        response?.stopReason !== "aborted" &&
+        response?.stopReason !== "error"
+      ) {
         const answer = extractText(response?.content);
         if (answer) {
           // A transient notification delivers the result to the user without
@@ -219,8 +256,6 @@ export default function digivolve(pi: ExtensionAPI) {
       // Background reflection is best-effort. Session replacement can also make
       // the originating extension runtime stale before a result is delivered.
     } finally {
-      if (activeSideSession === session) activeSideSession = null;
-      inDigivolveSession = false;
       if (session) {
         try {
           await session.abort();
@@ -229,10 +264,11 @@ export default function digivolve(pi: ExtensionAPI) {
         }
         session.dispose();
       }
+      if (activeReflection === run) activeReflection = null;
     }
   }
 
-  pi.on("input", (event: InputEvent, _ctx: ExtensionContext): void => {
+  pi.on("input", async (event: InputEvent, _ctx: ExtensionContext): Promise<void> => {
     if (event.source === "extension" || isDigivolveText(event.text)) {
       reflectionArmed = false;
       return;
@@ -240,12 +276,9 @@ export default function digivolve(pi: ExtensionAPI) {
 
     // Cancel any in-flight reflection so the agent can settle cleanly for the
     // new user message; a fresh pass will be queued when agent_settled fires.
-    const session = activeSideSession;
-    if (session) {
-      void session.abort();
-    }
-    activeSideSession = null;
-    inDigivolveSession = false;
+    // Wait for the owning task even when cancellation happens during setup, so
+    // stale work cannot later create a session or clear a newer run's guard.
+    await cancelActiveReflection();
 
     reflectionArmed = true;
   });
@@ -257,16 +290,7 @@ export default function digivolve(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (): Promise<void> => {
-    const session = activeSideSession;
-    activeSideSession = null;
-    if (!session) return;
-
-    try {
-      await session.abort();
-    } catch {
-      // Ignore abort errors while the main extension runtime is shutting down.
-    }
-    // The owning background task disposes the session in its finally block.
+    await cancelActiveReflection();
   });
 
   pi.registerCommand("digivolve", {
