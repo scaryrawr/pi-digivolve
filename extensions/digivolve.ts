@@ -209,17 +209,10 @@ export default function digivolve(pi: ExtensionAPI) {
       if (response?.stopReason !== "aborted" && response?.stopReason !== "error") {
         const answer = extractText(response?.content);
         if (answer) {
-          // A custom next-turn message records the result without creating a
-          // user message or immediately running the main agent. Therefore the
-          // result cannot arm or recursively launch another reflection pass.
-          pi.sendMessage(
-            {
-              customType: "pi-digivolve-result",
-              content: answer,
-              display: true,
-            },
-            { deliverAs: "nextTurn" },
-          );
+          // A transient notification delivers the result to the user without
+          // entering the conversation context, so the main agent never sees it
+          // in the next turn and reflection cannot be re-armed by its own output.
+          ctx.ui.notify(`pi-digivolve reflection result: ${answer}`, "info");
         }
       }
     } catch {
@@ -244,6 +237,15 @@ export default function digivolve(pi: ExtensionAPI) {
       reflectionArmed = false;
       return;
     }
+
+    // Cancel any in-flight reflection so the agent can settle cleanly for the
+    // new user message; a fresh pass will be queued when agent_settled fires.
+    const session = activeSideSession;
+    if (session) {
+      void session.abort();
+    }
+    activeSideSession = null;
+    inDigivolveSession = false;
 
     reflectionArmed = true;
   });
