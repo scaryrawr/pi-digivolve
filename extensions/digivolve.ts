@@ -1,3 +1,4 @@
+import { type Api, type Model } from "@earendil-works/pi-ai";
 import {
   AgentSession,
   buildSessionContext,
@@ -14,7 +15,8 @@ import type {
   InputEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { DigivolveConfigManager } from "./digivolve/config.ts";
+import { DigivolveConfigManager, type ModelIdentifier } from "./digivolve/config.ts";
+import { ModelSelectorComponent } from "./digivolve/model-selector.ts";
 
 const SENTINEL = "<!-- pi-digivolve -->";
 
@@ -194,6 +196,20 @@ export default function digivolve(pi: ExtensionAPI) {
   }
 
   /**
+   * Resolve the model to use for the reflection session. Prefers the configured
+   * reflection model from the user-level config, then falls back to the main
+   * session's model.
+   */
+  function resolveReflectionModel(ctx: ExtensionContext): Model<Api> | undefined {
+    const configuredModelId = config.reflectionModel;
+    if (configuredModelId) {
+      const found = ctx.modelRegistry.find(configuredModelId.provider, configuredModelId.id);
+      if (found) return found;
+    }
+    return ctx.model;
+  }
+
+  /**
    * Run the reflection pass in an in-memory side session seeded with a snapshot
    * of the main branch. The side session can edit repository guidance and use
    * other extensions, but cannot load pi-digivolve or trigger another main turn.
@@ -205,7 +221,7 @@ export default function digivolve(pi: ExtensionAPI) {
     // may be replaced while this background pass is running.
     const cwd = ctx.cwd;
     const systemPrompt = stripDynamicSystemPromptFooter(ctx.getSystemPrompt());
-    const model = ctx.model;
+    const model = resolveReflectionModel(ctx);
     const thinkingLevel = pi.getThinkingLevel();
     let contextMessages: ReturnType<typeof buildSessionContext>["messages"] = [];
     try {
@@ -299,8 +315,12 @@ export default function digivolve(pi: ExtensionAPI) {
       const command = args.trim().toLowerCase();
 
       if (command === "status") {
+        const configuredModelId = config.reflectionModel;
+        const modelLabel = configuredModelId
+          ? `${configuredModelId.id} [${configuredModelId.provider}]`
+          : "(default: main session model)";
         ctx.ui.notify(
-          `pi-digivolve auto=${config.enabled ? "on" : "off"}; current message=${reflectionArmed ? "armed" : "done"}; config=${config.path}`,
+          `pi-digivolve auto=${config.enabled ? "on" : "off"}; reflection model=${modelLabel}; current message=${reflectionArmed ? "armed" : "done"}; config=${config.path}`,
           "info",
         );
         return;
@@ -342,6 +362,54 @@ export default function digivolve(pi: ExtensionAPI) {
       }
 
       maybeQueueReflection(ctx, command === "force");
+    },
+  });
+
+  pi.registerCommand("digivolve-model", {
+    description: "Set the model for the reflection session",
+    handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("Reflection model selection requires an interactive UI", "warning");
+        return;
+      }
+
+      const configuredModelId = config.reflectionModel;
+      const currentModel = configuredModelId
+        ? ctx.modelRegistry.find(configuredModelId.provider, configuredModelId.id)
+        : ctx.model;
+
+      let selected: Model<Api> | undefined;
+      const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+        const component = new ModelSelectorComponent(tui, theme, {
+          currentModel,
+          modelRegistry: ctx.modelRegistry,
+          onSelect: (model: Model<Api>) => {
+            selected = model;
+            done(model.id);
+          },
+          onCancel: () => {
+            done(null);
+          },
+        });
+
+        return {
+          render: (w: number) => component.render(w),
+          invalidate: () => component.invalidate(),
+          handleInput: (data: string) => {
+            component.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      });
+
+      if (result && selected) {
+        const modelIdentifier: ModelIdentifier = {
+          provider: selected.provider,
+          id: selected.id,
+        };
+        config.reflectionModel = modelIdentifier;
+        ctx.ui.notify(`Reflection model set to ${selected.id} [${selected.provider}]`, "info");
+      }
     },
   });
 }

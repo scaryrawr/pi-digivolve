@@ -26,6 +26,10 @@ The ephemeral side session follows the same pattern as `/btw` side chats: it is 
 
 Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
 
+### Reflection model
+
+By default, the reflection session uses the same model as the main coding session. Use `/digivolve-model` to pick a different model for reflection — for example, a faster or cheaper model for the reflection pass while keeping a larger model for the main work. Your choice is persisted to `pi-digivolve.json` alongside the enabled setting.
+
 ## Commands
 
 ```text
@@ -34,7 +38,10 @@ Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve 
 /digivolve status   Show whether the current message is armed or done, plus the config path.
 /digivolve on       Enable automatic reflection and persist the setting.
 /digivolve off      Disable automatic reflection and persist the setting.
+/digivolve-model    Open an interactive model selector to set the reflection model.
 ```
+
+`/digivolve-model` opens a fuzzy-searchable list of all available models from your configured providers. The selected model is used for all future reflection sessions until changed. When no reflection model is configured, the main session's model is used as a fallback.
 
 ## Installation
 
