@@ -2,11 +2,11 @@
 
 `pi-digivolve` is a pi package that ports the Digivolution idea from the Copilot CLI plugin to pi.
 
-It helps agents leave a repository easier for the next agent to work in. Once per user prompt, near the point where the agent would otherwise stop, it queues one reflection pass asking the agent to decide whether durable repo instructions or in-repo skills should be improved. The agent may decide no change is warranted.
+It helps agents leave a repository easier for the next agent to work in. Once per user prompt, near the point where the agent would otherwise stop, it kicks off an ephemeral side session (in-memory, not persisted) seeded with the main conversation history. That side session runs the reflection pass independently in the background without interrupting the current session's work. The agent may decide no change is warranted.
 
 ## What it updates
 
-The extension is advisory: it does **not** directly auto-edit files. It asks the active agent to review the completed session and, only when useful, edit the narrowest appropriate guidance surface:
+The extension is advisory: it does **not** directly auto-edit files. The ephemeral side session reviews the completed session and, only when useful, edits the narrowest appropriate guidance surface:
 
 - `AGENTS.md`
 - `.pi/skills/**/SKILL.md`
@@ -18,9 +18,11 @@ The extension is advisory: it does **not** directly auto-edit files. It asks the
 Pi does not currently expose a cancellable `quit`/`agentStop` hook equivalent. Instead, `pi-digivolve` uses the closest safe lifecycle points:
 
 - `input`: each genuine user prompt (`source` `"interactive"` or `"rpc"`) arms one reflection pass. The injected reflection prompt arrives as `source: "extension"`, so it never re-arms reflection and cannot trigger a loop.
-- `agent_end`: when the agent finishes a prompt with no pending messages, it queues the armed reflection pass.
+- `agent_end`: when the agent finishes a prompt with no pending messages, it starts the ephemeral side session for the armed reflection pass.
 
 Reflection runs at most once per user message; arming resets on each new prompt.
+
+The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory()`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through a `DefaultResourceLoader` (with extensions excluded to prevent re-arming), and runs the reflection prompt independently. When it finishes, a summary of any changes is sent back to the main session.
 
 Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
 
