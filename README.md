@@ -22,7 +22,7 @@ Pi does not currently expose a cancellable `quit`/`agentStop` hook equivalent. I
 
 Reflection runs at most once per user message; arming resets on each new prompt.
 
-The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory()`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through an explicitly initialized `DefaultResourceLoader`, and runs the reflection prompt independently. The loader preserves other extensions—including local-model provider extensions—but filters out `pi-digivolve` itself, which is the hard recursion boundary. When reflection produces a summary, it is queued in the main session as a non-triggering custom message for the next turn—not as a user follow-up—so it cannot launch another agent or reflection pass.
+The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory(cwd)`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through an explicitly initialized `DefaultResourceLoader`, and runs the reflection prompt independently. The loader preserves other extensions—including local-model provider extensions—but filters out `pi-digivolve` itself, which is the hard recursion boundary. When reflection produces a summary, it is queued in the main session as a non-triggering custom message for the next turn—not as a user follow-up—so it cannot launch another agent or reflection pass.
 
 Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
 
