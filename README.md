@@ -18,11 +18,11 @@ The extension is advisory: it does **not** directly auto-edit files. The ephemer
 Pi does not currently expose a cancellable `quit`/`agentStop` hook equivalent. Instead, `pi-digivolve` uses the closest safe lifecycle points:
 
 - `input`: each genuine user prompt (`source` `"interactive"` or `"rpc"`) arms one reflection pass. The injected reflection prompt arrives as `source: "extension"`, so it never re-arms reflection and cannot trigger a loop.
-- `agent_end`: when the agent finishes a prompt with no pending messages, it starts the ephemeral side session for the armed reflection pass.
+- `agent_settled`: once the agent has no automatic retry, compaction retry, or queued continuation left, it starts the ephemeral side session for the armed reflection pass.
 
 Reflection runs at most once per user message; arming resets on each new prompt.
 
-The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory()`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through a `DefaultResourceLoader` (with extensions excluded to prevent re-arming), and runs the reflection prompt independently. When it finishes, a summary of any changes is sent back to the main session.
+The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory()`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through an explicitly initialized `DefaultResourceLoader`, and runs the reflection prompt independently. The loader preserves other extensions—including local-model provider extensions—but filters out `pi-digivolve` itself, which is the hard recursion boundary. When reflection produces a summary, it is queued in the main session as a non-triggering custom message for the next turn—not as a user follow-up—so it cannot launch another agent or reflection pass.
 
 Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
 

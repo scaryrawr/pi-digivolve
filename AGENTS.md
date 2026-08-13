@@ -6,7 +6,7 @@ This is a pi package loaded directly by pi; do not add or commit generated build
 
 ## Reflection Loop Invariant
 
-The reflection follow-up is delivered with `pi.sendUserMessage()`, which arrives as a `user`-role message. Never gate reflection arming on `message_start`/message role: the injected prompt would re-arm and loop. Distinguish genuine prompts from the injected follow-up via the `input` event `source` (`"interactive"`/`"rpc"` arm; `"extension"` does not) and the `<!-- pi-digivolve -->` sentinel in the text. Reflection is armed once per genuine user message and consumed at most once per message.
+The ephemeral reflection session may load other extensions, including model-provider extensions, but must filter out `pi-digivolve` itself; this is the hard boundary preventing recursive side sessions. Its result may be returned only as a non-triggering custom `nextTurn` message, never with `pi.sendUserMessage()`. Keep the `input` event source check (`"interactive"`/`"rpc"` arm; `"extension"` does not), the `<!-- pi-digivolve -->` sentinel, and the single-flight guard as defense in depth. Never arm from `message_start` or message role. Reflection is armed once per genuine user message and consumed at most once per message. Automatic reflection starts only from `agent_settled`, after retries, compaction, and queued continuations are exhausted; do not trigger it from per-turn events or `agent_end`.
 
 ## Build, Test, and Development Commands
 
