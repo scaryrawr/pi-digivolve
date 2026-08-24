@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a pi package loaded directly by pi; do not add or commit generated build output. `package.json` declares the package entry in `main`, the pi extension in `pi.extensions`, and bundled skills in `pi.skills`. `extensions/digivolve.ts` registers lifecycle hooks, the `/digivolve` command, and the `/digivolve-model` command. `extensions/digivolve/config.ts` owns user-level config persistence (including the optional `reflectionModel`). `extensions/digivolve/model-selector.ts` is the interactive model picker UI shared by `/digivolve-model`. `skills/digivolution/SKILL.md` is the packaged reflection skill and should stay aligned with extension behavior.
+This is a pi package loaded directly by pi; do not add or commit generated build output. `package.json` declares the package entry in `main`, the pi extension in `pi.extensions`, and bundled skills in `pi.skills`. `extensions/digivolve.ts` registers lifecycle hooks and the `/digivolve` command. `extensions/digivolve/config.ts` owns user-level enabled-state persistence. Reflection always uses the active coding session's model. `skills/digivolution/SKILL.md` is the packaged reflection skill and should stay aligned with extension behavior.
 
 ## Reflection Loop Invariant
 
@@ -14,7 +14,7 @@ Cancellation must cover the entire reflection task, including asynchronous resou
 
 - `npm run format` — format package files with oxfmt and sort imports.
 - `npm run typecheck` — run `tsgo --noEmit` with strict TypeScript settings.
-- `npm run lint` — run type-aware oxlint on extension sources (including `model-selector.ts`).
+- `npm run lint` — run type-aware oxlint on extension sources.
 - `npm run check` — run typecheck, then lint.
 - `npm pack --dry-run` — verify the npm package ships only intended files.
 

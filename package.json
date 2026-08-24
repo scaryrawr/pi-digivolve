@@ -15,7 +15,7 @@
   "main": "extensions/digivolve.ts",
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "lint": "oxlint extensions/digivolve.ts extensions/digivolve/config.ts extensions/digivolve/model-selector.ts",
+    "lint": "oxlint extensions/digivolve.ts extensions/digivolve/config.ts",
     "format": "oxfmt --write extensions package.json tsconfig.json .oxlintrc.json .oxfmtrc.json",
     "check": "npm run typecheck && npm run lint"
   },

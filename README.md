@@ -24,11 +24,7 @@ Reflection runs at most once per user message; arming resets on each new prompt.
 
 The ephemeral side session follows the same pattern as `/btw` side chats: it is created with `SessionManager.inMemory(cwd)`, seeded with the main conversation history via `buildSessionContext`, given access to project skills and prompts through an explicitly initialized `DefaultResourceLoader`, and runs the reflection prompt independently. The loader preserves other extensions—including local-model provider extensions—but filters out `pi-digivolve` itself, which is the hard recursion boundary. When reflection produces a summary, it is delivered to the user as a transient toast notification (`ctx.ui.notify`) rather than injected into the conversation context. Because it never enters the message history, the main agent cannot see or be influenced by its own prior reflection output in subsequent turns.
 
-Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`).
-
-### Reflection model
-
-By default, the reflection session uses the same model as the main coding session. Use `/digivolve-model` to pick a different model for reflection — for example, a faster or cheaper model for the reflection pass while keeping a larger model for the main work. Your choice is persisted to `pi-digivolve.json` alongside the enabled setting.
+Automatic reflection is enabled by default. Use `/digivolve off` or `/digivolve on` to persist the setting in pi's user config directory (`pi-digivolve.json`). The reflection session always uses the active coding session's model.
 
 ## Commands
 
@@ -38,10 +34,7 @@ By default, the reflection session uses the same model as the main coding sessio
 /digivolve status   Show whether the current message is armed or done, plus the config path.
 /digivolve on       Enable automatic reflection and persist the setting.
 /digivolve off      Disable automatic reflection and persist the setting.
-/digivolve-model    Open an interactive model selector to set the reflection model.
 ```
-
-`/digivolve-model` opens a fuzzy-searchable list of all available models from your configured providers. The selected model is used for all future reflection sessions until changed. When no reflection model is configured, the main session's model is used as a fallback.
 
 ## Installation
 
