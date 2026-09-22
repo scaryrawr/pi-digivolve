@@ -1,6 +1,6 @@
 ---
 name: digivolution
-description: Use this skill for end-of-task pi-digivolve reflection when deciding whether durable repo-specific guidance, AGENTS.md, pi skills, or in-repo SKILL.md files are stale, missing, or should be updated.
+description: Use this skill for explicit or adaptive end-of-task pi-digivolve reflection when deciding whether durable repo-specific guidance, AGENTS.md, pi skills, or in-repo SKILL.md files are stale, missing, or should be updated.
 ---
 
 # Digivolution Skill
@@ -30,7 +30,8 @@ Update instructions or skills only when at least one is true:
 - Do not create nested instructions unless the scope differs meaningfully from parent guidance.
 - Prefer correcting or tightening existing guidance over duplicating new text.
 - Keep edits concise and actionable.
-- If there is no durable improvement, make no file changes and do not respond.
+- Do not update guidance merely because an adaptive reflection was requested.
+- If there is no durable improvement, make no file changes and finish silently without acknowledging the adaptive reflection.
 
 ## Checklist
 

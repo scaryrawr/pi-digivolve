@@ -12,16 +12,16 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   InputEvent,
+  ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 
 import { DigivolveConfigManager } from "./digivolve/config.ts";
+import { TurnMonitor } from "./digivolve/turn-monitor.ts";
 
 const SENTINEL = "<!-- pi-digivolve -->";
 
 const FOLLOW_UP_PROMPT = `${SENTINEL}
-Read the digivolution skill if you have not already.
-
-Review what was learned during the task. If durable, repo-specific instructions or in-repo skills should be improved, edit the narrowest appropriate file now. If no durable improvement is warranted, make no changes and do not respond.`;
+Run one repository-guidance review. Review whether this turn revealed a verified, durable repository-specific setup, validation, workflow, safety, convention, or instruction correction that would help future agents. Check existing guidance before editing, prefer correcting it over duplicating text, and use the narrowest relevant instruction surface. Do not add generic advice, one-off task details, secrets, private data, or speculative preferences. Make no change when there is no durable improvement; in that case finish silently.`;
 
 /**
  * Strip dynamic footer lines from a system prompt so the ephemeral session
@@ -119,19 +119,18 @@ function extractText(content: unknown): string {
 /**
  * Register the pi-digivolve extension.
  *
- * Reflection is armed once per genuine user message (interactive or rpc input)
- * and consumed at most once before the agent would otherwise stop. The injected
- * follow-up reflection prompt arrives as `source: "extension"` input, so it does
- * not re-arm reflection and cannot trigger a reflection loop.
+ * Each genuine user message (interactive or rpc input) starts one in-memory
+ * evidence monitor. Automatic reflection is consumed at most once and only when
+ * the turn contains a repository-specific correction or a qualifying command
+ * failure/recovery sequence. Extension input cannot start or re-arm monitoring.
  *
- * Instead of prompting the current coding agent directly, digivolve now kicks off
- * an ephemeral side session (in-memory, not persisted) that is seeded with the
- * main conversation history and runs the reflection pass independently in the
- * background. This keeps the current session's work uninterrupted while still
- * allowing durable repo guidance and skills to be improved.
+ * Reflection runs in an ephemeral side session (in-memory, not persisted) seeded
+ * with the main conversation history. This keeps the current session's work
+ * uninterrupted while still allowing durable repo guidance to be improved.
  */
 export default function digivolve(pi: ExtensionAPI) {
   const config = new DigivolveConfigManager();
+  const turnMonitor = new TurnMonitor();
 
   // True when the current user message has not yet had a reflection pass queued.
   let reflectionArmed = false;
@@ -155,13 +154,18 @@ export default function digivolve(pi: ExtensionAPI) {
    * pi-digivolve and reports its result only through the UI. Source/sentinel
    * checks and the single-flight guard provide defense in depth.
    */
-  function maybeQueueReflection(ctx: ExtensionContext, force = false): boolean {
-    if (!force && !reflectionArmed) return false;
+  function maybeQueueReflection(
+    ctx: ExtensionContext,
+    options: { force?: boolean; requireEvidence?: boolean } = {},
+  ): boolean {
+    if (!options.force && !reflectionArmed) return false;
     if (activeReflection) return false;
     if (!ctx.isProjectTrusted()) return false;
     if (!hasConversation(ctx)) return false;
+    if (options.requireEvidence && !turnMonitor.claimReflection()) return false;
 
     reflectionArmed = false;
+    turnMonitor.markReflectionIssued();
     const run: ReflectionRun = {
       cancelled: false,
       session: null,
@@ -271,24 +275,41 @@ export default function digivolve(pi: ExtensionAPI) {
   }
 
   pi.on("input", async (event: InputEvent, _ctx: ExtensionContext): Promise<void> => {
-    if (event.source === "extension" || isDigivolveText(event.text)) {
+    if ((event.source !== "interactive" && event.source !== "rpc") || isDigivolveText(event.text)) {
       reflectionArmed = false;
       return;
     }
 
     // Cancel any in-flight reflection so the agent can settle cleanly for the
-    // new user message; a fresh pass will be queued when agent_settled fires.
-    // Wait for the owning task even when cancellation happens during setup, so
-    // stale work cannot later create a session or clear a newer run's guard.
+    // new user message. Wait for the owning task even during asynchronous setup,
+    // so stale work cannot later create a session or clear a newer run's guard.
     await cancelActiveReflection();
 
     reflectionArmed = true;
+    turnMonitor.start(event.text);
+  });
+
+  pi.on("tool_result", (event: ToolResultEvent, ctx): void => {
+    if (!reflectionArmed || event.toolName !== "bash") return;
+
+    const command = event.input.command;
+    if (typeof command !== "string") return;
+
+    if (event.isError) {
+      const error = event.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+      turnMonitor.recordFailure(command, error, ctx.cwd);
+    } else {
+      turnMonitor.recordSuccess(command, ctx.cwd);
+    }
   });
 
   pi.on("agent_settled", (_event, ctx): void => {
     if (!config.enabled) return;
 
-    maybeQueueReflection(ctx);
+    maybeQueueReflection(ctx, { requireEvidence: true });
   });
 
   pi.on("session_shutdown", async (): Promise<void> => {
@@ -302,7 +323,7 @@ export default function digivolve(pi: ExtensionAPI) {
 
       if (command === "status") {
         ctx.ui.notify(
-          `pi-digivolve auto=${config.enabled ? "on" : "off"}; reflection model=active session model; current message=${reflectionArmed ? "armed" : "done"}; config=${config.path}`,
+          `pi-digivolve auto=${config.enabled ? "on" : "off"}; reflection model=active session model; current message=${reflectionArmed ? `armed; adaptive evidence=${turnMonitor.hasEvidence ? "yes" : "no"}` : "done"}; config=${config.path}`,
           "info",
         );
         return;
@@ -343,7 +364,7 @@ export default function digivolve(pi: ExtensionAPI) {
         return;
       }
 
-      maybeQueueReflection(ctx, command === "force");
+      maybeQueueReflection(ctx, { force: command === "force" });
     },
   });
 }
