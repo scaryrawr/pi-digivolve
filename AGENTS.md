@@ -18,6 +18,8 @@ Cancellation must cover the entire reflection task, including asynchronous resou
 - `npm run check` — run typecheck, then lint.
 - `npm pack --dry-run` — verify the npm package ships only intended files.
 
+`oxlint` runs in type-aware mode here and declares an optional `oxlint-tsgolint` peer (currently `>=7.0.2001`, versioned independently of `oxlint`). When bumping `oxlint`, bump `oxlint-tsgolint` into that range in the same change and reinstall; otherwise `npm install` fails with `ERESOLVE` and type-aware lint stops working. Read the peer range from `node_modules/oxlint/package.json` rather than assuming it tracks the oxlint version.
+
 Before committing, run `npm run format`, `npm run check`, then `npm pack --dry-run` in that order. `npm pack --dry-run` currently warns that no `.npmignore` exists and falls back to `.gitignore`; treat the tarball contents as the package check. For manual extension testing, use `pi -e ./extensions/digivolve.ts`; use `pi -e .` when the bundled skill should also be loaded.
 
 ## Coding Style & Naming Conventions
