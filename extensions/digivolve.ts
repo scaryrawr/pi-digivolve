@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   AgentSession,
   buildSessionContext,
@@ -8,17 +9,22 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type {
+  CreateAgentSessionOptions,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
   InputEvent,
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 import { DigivolveConfigManager } from "./digivolve/config.ts";
 import { TurnMonitor } from "./digivolve/turn-monitor.ts";
 
 const SENTINEL = "<!-- pi-digivolve -->";
+
+const BashToolInput = Type.Object({ command: Type.String() });
 
 const FOLLOW_UP_PROMPT = `${SENTINEL}
 Run one repository-guidance review. Review whether this turn revealed a verified, durable repository-specific setup, validation, workflow, safety, convention, or instruction correction that would help future agents. Check existing guidance before editing, prefer correcting it over duplicating text, and use the narrowest relevant instruction surface. Do not add generic advice, one-off task details, secrets, private data, or speculative preferences. Make no change when there is no durable improvement; in that case finish silently.`;
@@ -41,8 +47,10 @@ function stripDynamicSystemPromptFooter(systemPrompt: string): string {
 function hasConversation(ctx: ExtensionContext): boolean {
   for (const entry of ctx.sessionManager.getEntries()) {
     if (entry.type !== "message") continue;
+
     if (entry.message.role === "user" || entry.message.role === "assistant") return true;
   }
+
   return false;
 }
 
@@ -64,6 +72,7 @@ async function createDigivolveResources(
 ): Promise<{ resourceLoader: DefaultResourceLoader; settingsManager: SettingsManager }> {
   const agentDir = getAgentDir();
   const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
@@ -83,37 +92,34 @@ async function createDigivolveResources(
   // createAgentSession only reloads a loader that it creates itself. A supplied
   // loader must be initialized explicitly or its skills/context remain empty.
   await resourceLoader.reload();
+
   return { resourceLoader, settingsManager };
 }
 
 /**
  * Find the last assistant message in an ephemeral side session's state.
  */
-function getLastAssistantMessage(
-  session: AgentSession,
-): { role: "assistant"; content: unknown; stopReason?: string } | null {
+function getLastAssistantMessage(session: AgentSession): AssistantMessage | null {
   for (let i = session.state.messages.length - 1; i >= 0; i--) {
     const message = session.state.messages[i];
+
     if (message?.role === "assistant") {
-      return message as { role: "assistant"; content: unknown; stopReason?: string };
+      return message;
     }
   }
+
   return null;
 }
 
 /**
  * Extract plain text from an assistant message's content parts.
  */
-function extractText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter(
-      (part): part is { type: "text"; text: string } =>
-        typeof part === "object" && part !== null && (part as { type?: unknown }).type === "text",
-    )
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
+function extractText(message: AssistantMessage | null): string {
+  if (message === null) return "";
+
+  const texts = message.content.flatMap((part) => (part.type === "text" ? [part.text] : []));
+
+  return texts.join("\n").trim();
 }
 
 /**
@@ -143,6 +149,7 @@ export default function digivolve(pi: ExtensionAPI) {
     session: AgentSession | null;
     completion: Promise<void> | null;
   }
+
   let activeReflection: ReflectionRun | null = null;
 
   /**
@@ -159,22 +166,30 @@ export default function digivolve(pi: ExtensionAPI) {
     options: { force?: boolean; requireEvidence?: boolean } = {},
   ): boolean {
     if (!options.force && !reflectionArmed) return false;
+
     if (activeReflection) return false;
+
     if (!ctx.isProjectTrusted()) return false;
+
     if (!hasConversation(ctx)) return false;
+
     if (options.requireEvidence && !turnMonitor.claimReflection()) return false;
 
     reflectionArmed = false;
     turnMonitor.markReflectionIssued();
+
     const run: ReflectionRun = {
       cancelled: false,
       session: null,
       completion: null,
     };
+
     activeReflection = run;
     run.completion = runDigivolveReflection(ctx, run);
     void run.completion;
+
     if (ctx.hasUI) ctx.ui.notify("pi-digivolve queued a reflection pass", "info");
+
     return true;
   }
 
@@ -184,9 +199,11 @@ export default function digivolve(pi: ExtensionAPI) {
    */
   async function cancelActiveReflection(): Promise<void> {
     const run = activeReflection;
+
     if (!run) return;
 
     run.cancelled = true;
+
     if (run.session) {
       try {
         await run.session.abort();
@@ -194,6 +211,7 @@ export default function digivolve(pi: ExtensionAPI) {
         // The owning task still performs final cleanup and releases the guard.
       }
     }
+
     await run.completion;
   }
 
@@ -214,6 +232,7 @@ export default function digivolve(pi: ExtensionAPI) {
     const model = ctx.model;
     const thinkingLevel = pi.getThinkingLevel();
     let contextMessages: ReturnType<typeof buildSessionContext>["messages"] = [];
+
     try {
       contextMessages = buildSessionContext(
         ctx.sessionManager.getEntries(),
@@ -225,32 +244,40 @@ export default function digivolve(pi: ExtensionAPI) {
 
     try {
       const { resourceLoader, settingsManager } = await createDigivolveResources(cwd, systemPrompt);
+
       if (run.cancelled) return;
 
-      const created = await createAgentSession({
+      const sessionOptions: CreateAgentSessionOptions = {
         cwd,
         sessionManager: SessionManager.inMemory(cwd),
-        ...(model ? { model } : {}),
         thinkingLevel,
         tools: ["read", "bash", "edit", "write"],
         resourceLoader,
         settingsManager,
-      });
+      };
+
+      if (model) sessionOptions.model = model;
+
+      const created = await createAgentSession(sessionOptions);
+
       session = created.session;
       run.session = session;
+
       if (run.cancelled) return;
 
-      session.agent.state.messages = contextMessages as typeof session.agent.state.messages;
+      session.agent.state.messages = contextMessages;
 
       await session.prompt(FOLLOW_UP_PROMPT, { source: "extension" });
 
       const response = getLastAssistantMessage(session);
+
       if (
         !run.cancelled &&
         response?.stopReason !== "aborted" &&
         response?.stopReason !== "error"
       ) {
-        const answer = extractText(response?.content);
+        const answer = extractText(response);
+
         if (answer) {
           // A transient notification delivers the result to the user without
           // entering the conversation context, so the main agent never sees it
@@ -268,8 +295,10 @@ export default function digivolve(pi: ExtensionAPI) {
         } catch {
           // Ignore abort errors during cleanup.
         }
+
         session.dispose();
       }
+
       if (activeReflection === run) activeReflection = null;
     }
   }
@@ -277,6 +306,7 @@ export default function digivolve(pi: ExtensionAPI) {
   pi.on("input", async (event: InputEvent, _ctx: ExtensionContext): Promise<void> => {
     if ((event.source !== "interactive" && event.source !== "rpc") || isDigivolveText(event.text)) {
       reflectionArmed = false;
+
       return;
     }
 
@@ -292,14 +322,15 @@ export default function digivolve(pi: ExtensionAPI) {
   pi.on("tool_result", (event: ToolResultEvent, ctx): void => {
     if (!reflectionArmed || event.toolName !== "bash") return;
 
+    if (!Value.Check(BashToolInput, event.input)) return;
+
     const command = event.input.command;
-    if (typeof command !== "string") return;
 
     if (event.isError) {
       const error = event.content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
         .join("\n");
+
       turnMonitor.recordFailure(command, error, ctx.cwd);
     } else {
       turnMonitor.recordSuccess(command, ctx.cwd);
@@ -326,33 +357,39 @@ export default function digivolve(pi: ExtensionAPI) {
           `pi-digivolve auto=${config.enabled ? "on" : "off"}; reflection model=active session model; current message=${reflectionArmed ? `armed; adaptive evidence=${turnMonitor.hasEvidence ? "yes" : "no"}` : "done"}; config=${config.path}`,
           "info",
         );
+
         return;
       }
 
       if (command === "on") {
         config.enabled = true;
         ctx.ui.notify("pi-digivolve automatic reflection enabled", "info");
+
         return;
       }
 
       if (command === "off") {
         config.enabled = false;
         ctx.ui.notify("pi-digivolve automatic reflection disabled", "info");
+
         return;
       }
 
       if (command && command !== "force") {
         ctx.ui.notify("Usage: /digivolve [status|on|off|force]", "warning");
+
         return;
       }
 
       if (!ctx.isProjectTrusted()) {
         ctx.ui.notify("pi-digivolve skipped: project is not trusted", "warning");
+
         return;
       }
 
       if (!hasConversation(ctx)) {
         ctx.ui.notify("pi-digivolve skipped: no conversation to reflect on yet", "warning");
+
         return;
       }
 
@@ -361,6 +398,7 @@ export default function digivolve(pi: ExtensionAPI) {
           "pi-digivolve already ran for this message. Use /digivolve force to run again.",
           "info",
         );
+
         return;
       }
 

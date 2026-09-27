@@ -14,5 +14,6 @@
     "skipLibCheck": true,
     "noImplicitAny": true
   },
-  "include": ["./**/*.ts", "./**/*.tsx"]
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["tools"]
 }

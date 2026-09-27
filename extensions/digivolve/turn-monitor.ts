@@ -67,6 +67,7 @@ export class TurnMonitor {
     if (!this.turn) return;
 
     const operation = normalizeCommandOperation(command, workingDirectory);
+
     if (!operation) return;
 
     this.turn.failures.push({
@@ -82,9 +83,11 @@ export class TurnMonitor {
     if (!this.turn) return;
 
     const operation = normalizeCommandOperation(command, workingDirectory);
+
     if (!operation || !operation.validationLike) return;
 
     const commandDigest = digest(operation.command);
+
     const related = this.turn.failures.filter(
       (failure) => failure.target === operation.target && failure.commandDigest !== commandDigest,
     );
@@ -103,6 +106,7 @@ export class TurnMonitor {
     }
 
     this.turn.reflectionIssued = true;
+
     return true;
   }
 
@@ -125,6 +129,7 @@ export class TurnMonitor {
 /** Detect an explicit correction that is also tied to a repository surface or workflow. */
 export function isRepositoryCorrection(prompt: string): boolean {
   const inspected = prompt.slice(0, MAX_INSPECTED_TEXT);
+
   return (
     CORRECTION_PATTERNS.some((pattern) => pattern.test(inspected)) &&
     REPO_SURFACE_PATTERN.test(inspected)
@@ -140,13 +145,16 @@ function normalizeCommandOperation(
   workingDirectory: string,
 ): CommandOperation | undefined {
   const inspected = command.slice(0, MAX_INSPECTED_TEXT);
+
   if (!inspected.trim()) return undefined;
 
   const candidates = shellPathCandidates(inspected);
+
   if (candidates.some(isUrlLike)) return undefined;
 
   for (const candidate of candidates) {
     const target = normalizeRepoPath(candidate, workingDirectory);
+
     if (target) {
       return {
         command: normalizeCommand(inspected),
@@ -171,6 +179,7 @@ function normalizeCommand(command: string): string {
 
 function isValidationCommand(command: string): boolean {
   const normalized = normalizeCommand(command);
+
   return (
     /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|lint|typecheck|check|build)\b/iu.test(
       normalized,
@@ -207,6 +216,8 @@ function normalizeRepoPath(candidate: string, workingDirectory: string): string 
   const relative = path.relative(root, resolved);
 
   if (!relative) return ".";
+
   if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+
   return relative.split(path.sep).join("/");
 }

@@ -2,23 +2,21 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { Static } from "typebox";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 const CONFIG_FILE_NAME = "pi-digivolve.json";
+
+const DigivolveConfigSchema = Type.Object({
+  /** Whether automatic end-of-session reflection is enabled. Defaults to true. */
+  enabled: Type.Optional(Type.Boolean()),
+});
 
 /**
  * User-level pi-digivolve configuration persisted under pi's agent directory.
  */
-export interface DigivolveConfig {
-  /** Whether automatic end-of-session reflection is enabled. Defaults to true. */
-  enabled?: boolean;
-}
-
-/**
- * Returns whether a value is a non-array object that can be inspected as JSON.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export type DigivolveConfig = Static<typeof DigivolveConfigSchema>;
 
 /**
  * Gets the absolute path to the pi-digivolve configuration file.
@@ -28,31 +26,21 @@ export function getDigivolveConfigPath(): string {
 }
 
 /**
- * Parse unknown JSON into the supported pi-digivolve configuration shape.
- * Invalid or unknown values are ignored so a malformed config does not prevent
- * pi from starting.
- */
-function parseConfig(value: unknown): DigivolveConfig {
-  if (!isRecord(value)) return {};
-
-  const config: DigivolveConfig = {};
-  if (typeof value.enabled === "boolean") {
-    config.enabled = value.enabled;
-  }
-  return config;
-}
-
-/**
  * Reads the pi-digivolve configuration from disk.
  *
- * Returns an empty config when the file does not exist or cannot be parsed.
+ * Returns an empty config when the file does not exist, cannot be parsed, or
+ * does not match the supported configuration schema. Unknown values are ignored
+ * so a malformed config does not prevent pi from starting.
  */
 function readConfig(): DigivolveConfig {
   const configPath = getDigivolveConfigPath();
+
   if (!existsSync(configPath)) return {};
 
   try {
-    return parseConfig(JSON.parse(readFileSync(configPath, "utf-8")));
+    const json: unknown = JSON.parse(readFileSync(configPath, "utf-8"));
+
+    return Value.Check(DigivolveConfigSchema, json) ? json : {};
   } catch {
     return {};
   }
