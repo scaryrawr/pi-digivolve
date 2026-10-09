@@ -20,8 +20,8 @@
     "check": "npm run typecheck && npm run lint"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.99.1",
-    "@earendil-works/pi-coding-agent": "^0.99.1",
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-coding-agent": "1.0.0",
     "@oxlint/plugins": "1.83.0",
     "@types/node": "^26.6.2",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
